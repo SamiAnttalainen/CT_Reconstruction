@@ -1,196 +1,365 @@
-# A library to convert fan-beam data geometry to parallel-beam data geometry.
-import numpy as np
+""" A library to convert fan-beam data geometry to parallel-beam data geometry."""
+import numpy as np #type: ignore
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d # type: ignore
 from skimage.transform import iradon # type: ignore
+from cil.framework.acquisition_data import AcquisitionData # type: ignore
 
 
-def convert_fan_to_parallel_geometry(data, idx, source_origin_distance, detector_pixel_size=0.2):
+
+def _validate_parameter(value, name: str, expected_types, allow_none: bool = False, 
+                       must_be_positive: bool = False):
+    """Helper function for parameter validation."""
+    if allow_none and value is None:
+        return
+    
+    if not isinstance(value, expected_types):
+        if isinstance(expected_types, tuple):
+            type_names = [t.__name__ for t in expected_types]
+        else:
+            type_names = [expected_types.__name__]
+        
+        if allow_none:
+            type_names.append("None")
+        
+        type_str = " or ".join(type_names)
+        raise TypeError(f"{name} must be {type_str}, got {type(value)}.")
+    
+    if must_be_positive and value is not None and value <= 0:
+        raise ValueError(f"{name} must be positive, got {value}.")
+
+
+def convert_fan_to_parallel_geometry(
+        data: np.ndarray,
+        idx: int,
+        source_origin_distance: float,
+        detector_pixel_size: float = 0.2
+        ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
     """
-    A function converts CIL's 2D fan-beam sinogram projections into parallel-beam sinogram projections.
+    Convert CIL's 2D fan-beam sinogram projections to parallel-beam.
 
-    Args:
-        data: CIL's absorption data datacontainer.
-        idx: Index of the slice.
-        source_origin_distance: Source-Origin-distance in millimeters.
-        detector_pixel_size: Detector pixel size in millimeters (default = 0.2 mm).
+    Parameters
+    ----------
+    data : np.ndarray
+        CIL's absorption data datacontainer
+    idx : int
+        Index of the slice
+    source_origin_distance : float
+        Source-Origin-distance in millimeters
+    detector_pixel_size : float, default 0.2
+        Detector pixel size in millimeters
 
-    Returns:
-        Psinogram: Converted parallel-beam sinogram.
-        Ploc: Parallel-beam sensor locations.
-        Pangles: Parallel-beam projection angles.
+    Returns
+    -------
+    Psinogram : np.ndarray
+        Converted parallel-beam sinogram.
+    Ploc : np.ndarray
+        Parallel-beam sensor locations.
+    Pangles : np.ndarray
+        Parallel-beam projection angles.
+
+    Raises
+    ------
+    TypeError
+        If parameters are not of correct type
+    ValueError
+        If parameters are invalid or required parameters are missing
     """
+
+    # Parameter validation
+    _validate_parameter(data, "data", AcquisitionData)
+    _validate_parameter(idx, "idx", (int, float), must_be_positive=True)
+    _validate_parameter(source_origin_distance, "source_origin_distance", (int, float), must_be_positive=True)
+    _validate_parameter(detector_pixel_size, "detector_pixel_size", (int, float), must_be_positive=True)
+
 
     # A 2D Fan-beam sinogram from the 3D Cone-beam data.
-    Fsinogram = data.get_slice(vertical=idx, force=True).as_array()
+    fan_sinogram = data.get_slice(vertical=idx, force=True).as_array()
 
     # Rotation increment of the projection angles
-    rotation_increment = data.geometry.angles[1] - data.geometry.angles[0]
+    rotation_increment = float(data.geometry.angles[1] - data.geometry.angles[0])
     # print(f'Rotation increment: {rotation_increment}')
 
     # Source-Origin-distance in pixels
     D = source_origin_distance / detector_pixel_size
 
-    Psinogram, Ploc, Pangles = fan_to_parallel(
-        F=Fsinogram,
+    parallel_sinogram, parallel_detector_positions, parallel_angles_deg = fan_to_parallel(
+        F=fan_sinogram,
         D=D,
         FanRotationIncrement=rotation_increment
         )
     
-    return Psinogram, Ploc, Pangles
+    return parallel_sinogram, parallel_detector_positions, parallel_angles_deg
 
 
 def fan_to_parallel(
-    F,
-    D,
-    FanSensorGeometry='line',
-    FanSensorSpacing=1.0,
-    FanRotationIncrement=1.0,
-    FanCoverage='cycle',
-    Interpolation='linear',
-    ParallelSensorSpacing=None,
-    ParallelCoverage='halfcycle',
-    ParallelRotationIncrement=None
-):
+    F: np.ndarray,
+    D: float,
+    FanSensorGeometry: str = 'line',
+    FanSensorSpacing: float = 1.0,
+    FanRotationIncrement: float = 1.0,
+    FanCoverage: str = 'cycle',
+    Interpolation: str = 'linear',
+    ParallelSensorSpacing: float = None,
+    ParallelCoverage: str = 'halfcycle',
+    ParallelRotationIncrement: float = None
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     
     """
-    A Python version of Matlab's fan2para function to convert CIL's 2D fan-beam sinogram projection slice to parallel-beam sinogram projection slice.
-    Matlab version documentation URL: https://se.mathworks.com/help/images/ref/fan2para.html
+    Convert fan-beam sinogram to parallel-beam sinogram.
 
-    Args:
-        F: Fan-beam sinogram in numpy.darray class format.
-        D: Source-Origin-distance in pixels.
-        FanSensorGeometry: Type of the sensor geometry. If 'line', then the sensors are spaced at equal distances
-        along a line that is parallel to the x' axis. Else, Sensors are spaced at equal angles along a circular arc. 
-        FanSensorSpacing: Spacing of the sensors in the fan-beam detector (default: 1.0).
-        FanRotationIncrement: Fan-beam rotation increment in degrees.
-        FanCoverage: Range of fan-beam rotation. If 'cycle', rotates 360 degrees, else rotates minimum amount to represent
-        the sinogram.
-        Interpolation: Type of interpolation used. The string has to be one of 'linear', 'spline', 'pchip' or 'nearest'.
-        ParallelSensorSpacing: Spacing of the sensors in the parallel-beam detector. If None is specified, then the spacing is
-        the same as in fan-beam.
-        ParallelCoverage: Range of parallel-beam rotation. 'half-cycle' is [0, 180) degrees and 'cycle' is [0, 360) degrees.
-        ParallelRotationIncrement: Parallel-beam rotation increment in degrees. If None is specified, then the increment is the
-        same as in fan-beam.
+    Python version of Matlab's fan2para function to convert CIL's 2D 
+    fan-beam sinogram projection slice to parallel-beam sinogram projection 
+    slice. Matlab version documentation URL: 
+    https://se.mathworks.com/help/images/ref/fan2para.html
 
-    Returns:
-        P: Parallel-beam sinogram sinogram.
-        ploc: Parallel-beam sensor locations.
-        ptheta_deg: Parallel-beam projection angles in degrees.
+    Parameters
+    ----------
+    F : np.ndarray
+        Fan-beam sinogram in numpy.ndarray class format
+    D : float
+        Source-Origin-distance in pixels
+    FanSensorGeometry : str, default "line"
+        Type of the sensor geometry. If 'line', then the sensors are spaced 
+        at equal distances along a line that is parallel to the x' axis. 
+        Else, sensors are spaced at equal angles along a circular arc
+    FanSensorSpacing : float, default 1.0
+        Spacing of the sensors in the fan-beam detector
+    FanRotationIncrement : float, default 1.0
+        Fan-beam rotation increment in degrees
+    FanCoverage : str, default "cycle"
+        Range of fan-beam rotation. If 'cycle', rotates 360 degrees, else 
+        rotates minimum amount to represent the sinogram
+    Interpolation : str, default "linear"
+        Type of interpolation used. Must be one of 'linear', 'spline', 
+        'pchip' or 'nearest'
+    ParallelSensorSpacing : float or None, default None
+        Spacing of the sensors in the parallel-beam detector. If None, 
+        the spacing is the same as in fan-beam
+    ParallelCoverage : str, default "halfcycle"
+        Range of parallel-beam rotation. 'halfcycle' is [0, 180) degrees 
+        and 'cycle' is [0, 360) degrees
+    ParallelRotationIncrement : float or None, default None
+        Parallel-beam rotation increment in degrees. If None, the increment 
+        is the same as in fan-beam
+
+    Returns
+    -------
+    parallel_sinogram : np.ndarray
+        Parallel-beam sinogram in np.ndarray format
+    parallel_detector_positions : np.ndarray
+        Parallel-beam detector sensor positions
+    parallel_angles_deg : np.ndarray
+        Parallel-beam projection angles in degrees
+
+    Raises
+    ------
+    TypeError
+        If parameters are not of correct type
+    ValueError
+        If parameters are invalid or required parameters are missing
     """
-    # --- 1. Setup Fan-Beam Geometry (same as before) ---
-    num_fan_angles, m = F.shape
+
+
+    # Parameter validation
+    _validate_parameter(F, "F", np.ndarray)
+    _validate_parameter(D, "D", (int, float), must_be_positive=True)
+    _validate_parameter(FanSensorGeometry, "FanSensorGeometry", str)
+    _validate_parameter(FanSensorSpacing, "FanSensorSpacing", (int, float), 
+                       must_be_positive=True)
+    _validate_parameter(FanRotationIncrement, "FanRotationIncrement", 
+                       (int, float), must_be_positive=True)
+    _validate_parameter(FanCoverage, "FanCoverage", str)
+    _validate_parameter(Interpolation, "Interpolation", str)
+    _validate_parameter(ParallelSensorSpacing, "ParallelSensorSpacing", 
+                       (int, float), allow_none=True, must_be_positive=True)
+    _validate_parameter(ParallelCoverage, "ParallelCoverage", str)
+    _validate_parameter(ParallelRotationIncrement, "ParallelRotationIncrement", 
+                       (int, float), allow_none=True, must_be_positive=True)
     
-    # ... (The rest of the initial setup is identical to the previous version)
+    # --- Fan-Beam Geometry Setup ---
+    num_fan_angles, num_detectors = F.shape
     
+    # Original fan-beam projection angles
     theta_deg_orig = np.arange(num_fan_angles) * FanRotationIncrement
     
-    m2cn = (m - 1) // 2
-    g = (np.arange(m) - m2cn) * FanSensorSpacing
+    # Fan-beam detector positions
+    detector_center_idx = (num_detectors - 1) // 2
+    detector_positions = (np.arange(num_detectors) - detector_center_idx) * FanSensorSpacing
+    
+    # Convert detector positions to fan angles
     if FanSensorGeometry == 'line':
-        gamma_deg = np.rad2deg(np.arctan(g / D))
+        # For linear detector array
+        fan_angles_deg = np.rad2deg(np.arctan(detector_positions / D))
     else:
-        gamma_deg = g
+        # For arc detector array
+        fan_angles_deg = detector_positions
 
-    # --- 2. Setup Parallel-Beam Grid (same as before) ---
-    # ... (This section is also identical)
+    # --- Parallel-Beam Grid Setup ---
+    # Set default parallel-beam rotation increment if not specified
     if ParallelRotationIncrement is None:
         ParallelRotationIncrement = FanRotationIncrement
+    
+    # Define parallel-beam projection angles
     if ParallelCoverage == 'halfcycle':
-        ptheta_deg = np.arange(0, 180, ParallelRotationIncrement)
+        parallel_angles_deg = np.arange(0, 180, ParallelRotationIncrement)
     else:
-        ptheta_deg = np.arange(0, 360, ParallelRotationIncrement)
-    # ... (ploc calculation is the same)
-    gamma_range_rad = np.deg2rad([gamma_deg.min(), gamma_deg.max()])
-    ploc_range = D * np.sin(gamma_range_rad)
-    ploc_min, ploc_max = ploc_range
+        parallel_angles_deg = np.arange(0, 360, ParallelRotationIncrement)
+    
+    # Calculate parallel-beam detector positions
+    fan_angles_rad = np.deg2rad([fan_angles_deg.min(), fan_angles_deg.max()])
+    parallel_range = D * np.sin(fan_angles_rad)
+    parallel_min, parallel_max = parallel_range
+    
+    # Set default parallel sensor spacing if not specified
     if ParallelSensorSpacing is None:
         ParallelSensorSpacing = FanSensorSpacing
-    num_ploc = int(np.ceil((ploc_max - ploc_min) / ParallelSensorSpacing)) + 1
-    ploc_center = (ploc_max + ploc_min) / 2
-    ploc_half_width = (num_ploc - 1) / 2 * ParallelSensorSpacing
-    ploc = np.linspace(ploc_center - ploc_half_width, ploc_center + ploc_half_width, num_ploc)
+    
+    # Create parallel-beam detector position array
+    num_parallel_detectors = int(np.ceil((parallel_max - parallel_min) / ParallelSensorSpacing)) + 1
+    parallel_center = (parallel_max + parallel_min) / 2
+    parallel_half_width = (num_parallel_detectors - 1) / 2 * ParallelSensorSpacing
+    parallel_detector_positions = np.linspace(
+        parallel_center - parallel_half_width, 
+        parallel_center + parallel_half_width, 
+        num_parallel_detectors
+    )
 
+    # --- Data Interpolation Setup ---
+    fan_data_interp = F
+    fan_angles_interp = theta_deg_orig
 
-    # --- 3. Handle 'cycle' Coverage and Perform Interpolation ---
-    F_interp = F
-    theta_deg_interp = theta_deg_orig
-
-    # **NEW**: Implement MATLAB's circular padding for 'cycle' coverage
+    # Apply circular padding for full cycle coverage
     if FanCoverage == 'cycle':
-        # print("Using 'cycle' coverage. Padding sinogram data to fill corners.")
-        n4 = int(np.ceil(num_fan_angles / 4))
+        padding_size = int(np.ceil(num_fan_angles / 4))
         
         # Pad the fan-beam data array
-        F_pad_start = F[-n4:, :]
-        F_pad_end = F[:n4, :]
-        F_interp = np.vstack([F_pad_start, F, F_pad_end])
+        data_pad_start = F[-padding_size:, :]
+        data_pad_end = F[:padding_size, :]
+        fan_data_interp = np.vstack([data_pad_start, F, data_pad_end])
         
         # Pad the corresponding angles, wrapping around 360 degrees
-        theta_pad_start = theta_deg_orig[-n4:] - 360
-        theta_pad_end = theta_deg_orig[:n4] + 360
-        theta_deg_interp = np.hstack([theta_pad_start, theta_deg_orig, theta_pad_end])
-
-    # ... (The two-step interpolation logic now runs on the padded data)
+        angles_pad_start = theta_deg_orig[-padding_size:] - 360
+        angles_pad_end = theta_deg_orig[:padding_size] + 360
+        fan_angles_interp = np.hstack([angles_pad_start, theta_deg_orig, angles_pad_end])
     
-    interp_map = {'linear': 'linear', 'spline': 'cubic', 'pchip': 'pchip', 'nearest': 'nearest'}
-    interp_kind = interp_map.get(Interpolation, 'linear')
+    # Set up interpolation method
+    interp_method_map = {
+        'linear': 'linear', 
+        'spline': 'cubic', 
+        'pchip': 'pchip', 
+        'nearest': 'nearest'
+    }
+    interp_method = interp_method_map.get(Interpolation, 'linear')
 
-    # Step 1: Angular Interpolation
-    Fsh = np.zeros((m, len(ptheta_deg)))
-    for i in range(m):
-        shifted_theta = theta_deg_interp - gamma_deg[i]
-        interp_func = interp1d(shifted_theta, F_interp[:, i], kind=interp_kind,
-                               bounds_error=False, fill_value=0.0)
-        Fsh[i, :] = interp_func(ptheta_deg)
+    # --- Two-Step Interpolation Process ---
+    
+    # Step 1: Angular interpolation (fan angles to parallel angles)
+    angular_interp_data = np.zeros((num_detectors, len(parallel_angles_deg)))
+    for detector_idx in range(num_detectors):
+        # Shift angles by fan angle for this detector
+        shifted_angles = fan_angles_interp - fan_angles_deg[detector_idx]
         
-    # Step 2: Spatial Interpolation
-    t = D * np.sin(np.deg2rad(gamma_deg))
-    P = np.zeros((len(ploc), len(ptheta_deg)))
-    for i in range(len(ptheta_deg)):
-        interp_func = interp1d(t, Fsh[:, i], kind=interp_kind,
-                               bounds_error=False, fill_value=0.0)
-        P[:, i] = interp_func(ploc)
+        # Interpolate to parallel projection angles
+        interp_func = interp1d(
+            shifted_angles, fan_data_interp[:, detector_idx], 
+            kind=interp_method, bounds_error=False, fill_value=0.0
+        )
+        angular_interp_data[detector_idx, :] = interp_func(parallel_angles_deg)
+        
+    # Step 2: Spatial interpolation (fan positions to parallel positions)
+    fan_detector_parallel_pos = D * np.sin(np.deg2rad(fan_angles_deg))
+    parallel_sinogram = np.zeros((len(parallel_detector_positions), len(parallel_angles_deg)))
+    
+    for angle_idx in range(len(parallel_angles_deg)):
+        # Interpolate from fan detector positions to parallel detector positions
+        interp_func = interp1d(
+            fan_detector_parallel_pos, angular_interp_data[:, angle_idx], 
+            kind=interp_method, bounds_error=False, fill_value=0.0
+        )
+        parallel_sinogram[:, angle_idx] = interp_func(parallel_detector_positions)
     
     print(f'Rebinning is complete.')
-    print(f'Shape of the parallel sinogram: {P.shape}.')
-    print(f'Shape of the parallel angles: {ptheta_deg.shape}.')
-    plt.figure(figsize=(8,6))
-    plt.imshow(P,
+    print(f'Shape of the parallel-beam sinogram: {parallel_sinogram.shape}.')
+    print(f'Shape of the parallel-beam sensor locations vector: {parallel_detector_positions.shape}')
+    print(f'Shape of the parallel-beam angles: {parallel_angles_deg.shape}.')
+    plt.figure()
+    plt.imshow(parallel_sinogram,
             aspect='auto',
             cmap='hot')
     plt.title("Rebinned Parallel-beam Sinogram")
     plt.show()
 
-    return P, ploc, ptheta_deg
+    return parallel_sinogram, parallel_detector_positions, parallel_angles_deg
 
 
-def reconstruct_parallel_sinogram(Psinogram, Pangles, filter_name, interpolation, lb=0, ub=1, cmap='gray'):
+def reconstruct_parallel_sinogram(
+        parallel_sinogram: np.ndarray,
+        parallel_angles: np.ndarray,
+        filter_name: str,
+        interpolation: str,
+        lower_bound: float = 0.0,
+        upper_bound: float = 1.0,
+        cmap: str = 'gray'
+        ) -> np.ndarray:
 
     """
-    Function reconstructs the projection image using skimage's iradon function. The function is intended for
-    only parallel-beam sinograms.
+    Function reconstructs the projection image using skimage's iradon function.
+    The function is intended for parallel-beam sinograms.
 
-    Args:
-        Psinogram: Parallel-beam sinogram in numpy.darray class format.
-        Pangles: Parallel-beam projection angles in numpy.darray class format.
-        filter_name: Filter for the reconstructions. Possible filters are 'hamming', 'hann', 'cosine', 'ramp' and 'shepp-logan'.
-        interpolation: Interpolation method for the reconstruction. Possible methods are 'linear', 'nearest' and 'cubic'.
-        lb: Lower bound of the image color (Default: 0). 
-        ub: Upper bound of the image color (Default: 1).
-        cmap: Colormap for the image. Possible colormaps are for example 'gray', 'hot', 'inferno'.
+    Parameters
+    ----------
+    parallel_sinogram : np.ndarray
+        Parallel-beam sinogram in numpy.darray class format
+    parallel_angles : np.ndarray
+        Parallel-beam projection angles in numpy.darray class format
+    filter_name : str
+        Filter for the reconstructions. Possible filters are 'hamming', 'hann', 'cosine', 'ramp' and 'shepp-logan'
+    interpolation : str
+        Interpolation method for the reconstruction. Possible methods are 'linear', 'nearest' and 'cubic'
+    lower_bound : int or float, default 0.0
+        Lower bound of the image color
+    upper_bound : int or float, default 1.0
+        Upper bound of the image color
+    cmap : str, default "gray"
+        Colormap for the image. Possible colormaps are for example 'gray', 'hot', 'inferno'
 
-    Returns:
-        recon: Reconstruction of the projection image in numpy.darray class format.
+    Returns
+    -------
+    recon : np.ndarray
+        Reconstruction of the projection image in numpy.darray class format
+    
+    Raises
+    ------
+    TypeError
+        If parameters are not of correct type
+    ValueError
+        If parameters are invalid or required parameters are missing
     """
+
+    # Parameter validation
+    _validate_parameter(parallel_sinogram, "parallel_sinogram", np.ndarray)
+    _validate_parameter(parallel_angles, "parallel_angles", np.ndarray)
+    _validate_parameter(filter_name, "filter_name", str)
+    _validate_parameter(interpolation, "interpolation", str)
+    _validate_parameter(lower_bound, "lower_bound", (int, float))
+    _validate_parameter(upper_bound, "upper_bound", (int, float))
+    if upper_bound < lower_bound:
+        raise ValueError("Upper bound needs to greater than lower bound.")
+    _validate_parameter(cmap, "cmap", str)
 
     # Reconstuction of the image
-    recon = iradon(Psinogram, theta=Pangles, filter_name=filter_name, interpolation=interpolation)
+    recon = iradon(parallel_sinogram, theta=parallel_angles, filter_name=filter_name, interpolation=interpolation)
 
     print('Reconstruction complete.')
-    plt.figure(figsize=(7,7))
-    plt.imshow(recon, cmap=cmap, vmin=lb, vmax=ub)
+    plt.figure()
+    plt.imshow(
+        np.fliplr(recon),  # Horizontal flip (mirror left-right)
+        cmap=cmap,
+        vmin=lower_bound,
+        vmax=upper_bound,
+        origin='upper')
     plt.title('Parallel-beam reconstruction using rebinned sinogram')
     plt.show()
 

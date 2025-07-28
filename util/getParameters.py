@@ -1,44 +1,105 @@
 # A library for setting up CT-scan parameters from the 'params' dictionary, which is read first by using pcaReader.py.
 
-def get_parameters(params):
+def get_parameters(
+        params: dict
+        ) -> tuple[float, float, float, float, int, int, int]:
 
     """
-    A function for reading pcaReader.py's parameters dictionary and for setting up the CT-scan parameters.
+    Reads parameters dictionary and sets up the CT-scan parameters.
 
-    Args:
-        params: CT-scan dictionary from pcaReader function.
+    Parameters
+    ----------
+    params : dict
+        CT-scan parameter dictionary from pcaReader function
 
-    Returns:
-        SOD: Source-Origin-distance in millimeters.
-        SDD: Source-Detector-distance in millimeters.
-        ODD: Origin-Detector-distance in millimeters.
-        pixel_size: Detector pixel size in millimeters.
-        num_pixels: Number of pixels in the projection image.
-        num_projs: Number of projections used in the scan.
+    Returns
+    -------
+    SOD : float
+        Source-Origin-distance in millimeters
+    SDD : float
+        Source-Detector-distance in millimeters
+    ODD : float
+        Origin-Detector-distance in millimeters
+    pixel_size : float
+        Detector pixel size in millimeters
+    num_pixels : int
+        Number of pixels in the projection image
+    num_projs : int
+        Number of projections used in the scan
+    intensity : int
+        White level intensity
+
+    Raises
+    ------
+    TypeError
+        If parameters are not of correct type
+    ValueError
+        If parameters are invalid or required parameters are missing
     """
 
+    # Parameter validation
+    if not isinstance(params, dict):
+        raise TypeError(f"params must be a dictionary, got {type(params)}.")
 
-    SOD = params['FOD'] # Source-Origin-distance
-    SDD = params['FDD'] # Source-Detector-distance
-    ODD = SDD - SOD # Origin-Detector-distance
 
-    print(f'SOD: {SOD:.3f} mm')
-    print(f'SDD: {SDD:.3f} mm')
-    print(f'ODD: {ODD:.3f} mm')
+    # Extract and validate required parameters
+    required_keys = ['FOD', 'FDD', 'PixelsizeX', 'DimX', 'DimY', 
+                     'NumberImages', 'FreeRay']
+    
+    for key in required_keys:
+        if key not in params:
+            raise ValueError(f"Missing required parameter: {key}")
+    
+    try:
+        # Source and detector distances
+        SOD = float(params['FOD'])  # Source-Origin-distance
+        SDD = float(params['FDD'])  # Source-Detector-distance
+        
+        # Validate geometric constraints
+        if SOD <= 0:
+            raise ValueError("SOD must be positive")
+        if SDD <= 0:
+            raise ValueError("SDD must be positive")
+        if SDD <= SOD:
+            raise ValueError("SDD must be greater than SOD")
+            
+        ODD = SDD - SOD  # Origin-Detector-distance
+        
+        print(f'SOD: {SOD:.3f} mm')
+        print(f'SDD: {SDD:.3f} mm')
+        print(f'ODD: {ODD:.3f} mm')
 
-    pixel_size = params['PixelsizeX']
-    print(f'Detector pixel size: {pixel_size:.3f} mm')
+        # Detector pixel size
+        pixel_size = float(params['PixelsizeX'])
+        if pixel_size <= 0:
+            raise ValueError("Pixel size must be positive")
+        print(f'Detector pixel size: {pixel_size:.3f} mm')
 
-    num_pixels = (params['DimX'], params['DimY']) # Width and height of the projection image
-    num_pixels = (num_pixels[0], num_pixels[1])
-    print(f'The original size of the projection image: {params['DimX']} x {params['DimY']}, set to {num_pixels[0]} x {num_pixels[1]}')
+        # Image dimensions
+        dim_x = int(params['DimX'])
+        dim_y = int(params['DimY'])
+        
+        if dim_x <= 0 or dim_y <= 0:
+            raise ValueError("Image dimensions must be positive")
+            
+        num_pixels = (dim_x, dim_y)
+        print(f'Projection image size: {dim_x} x {dim_y}')
 
-    # Projections
-    num_projs = params['NumberImages']
-    print(f'{num_projs} projection angles used')
+        # Number of projections
+        num_projs = int(params['NumberImages'])
+        if num_projs <= 0:
+            raise ValueError("Number of projections must be positive")
+        print(f'{num_projs} projection angles used')
 
-    # White level intensity
-    max_k = params['FreeRay']
-    print(f'White level intensity: {max_k = }')
+        # White level intensity
+        intensity = int(params['FreeRay'])
+        if intensity < 0:
+            raise ValueError("Intensity must be non-negative")
+        print(f'White level intensity: {intensity}')
+        
+    except (ValueError, TypeError) as e:
+        if "invalid literal" in str(e) or "int()" in str(e):
+            raise ValueError(f"Invalid parameter format: {e}")
+        raise
 
-    return SOD, SDD, ODD, pixel_size, num_pixels, num_projs, max_k
+    return SOD, SDD, ODD, pixel_size, num_pixels, num_projs, intensity

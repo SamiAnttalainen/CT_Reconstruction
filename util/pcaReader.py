@@ -1,8 +1,43 @@
-def read_pca_file(filepath, verbose = 0):
-    """Function for reading pca file metadata about 
+def read_pca_file(filepath : str, verbose: int = 0) -> dict:
+    """
+    Function for reading pca file metadata about 
     the geometry and turning it into a dict.
+
+    Parameters
+    ----------
+    filepath : str
+        Filepath of the PCA file
+    verbose : int, default 0
+        Verbose parameter. If verbose > 0, then prints conversions. If verbose > 1,
+        then prints all lines
     
-    T H   2025"""
+    Returns
+    -------
+    out : dict
+        Parameter dictionary for the CT-scan parameters
+    
+    Raises
+    ------
+    TypeError
+        If parameters are not of correct type
+    ValueError
+        If parameters are invalid or required parameters are missing
+    
+    T H   2025,
+    Edited: S A 2025
+    """
+
+    # Parameter validation
+    if not isinstance(filepath, str):
+        raise TypeError(f"Filepath must be a string, got {type(filepath)}.")
+    if len(filepath) == 0:
+        raise ValueError(f"Invalid file path, got {filepath}.")
+    if not isinstance(verbose, int):
+        raise TypeError(f"verbose must be a integer, got {type(verbose)}.")
+    if verbose < 0:
+        raise ValueError(f"verbose must be a non-negative integer, got {verbose}.")
+
+
     out = {}
     # Important floating point values
     floatKeys = ["FDD", "FOD", "cx", "cy", "Tilt", "Oblique", "CalibValue", 
