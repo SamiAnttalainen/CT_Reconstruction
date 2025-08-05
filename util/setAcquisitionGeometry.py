@@ -1,6 +1,8 @@
 # A library to set the Acquisition geometry from getParameters.py's data.
 import numpy as np # type: ignore
 from cil.framework import AcquisitionGeometry # type: ignore
+from util.getParameters import get_ct_parameters
+from util.getParameters import get_cl_parameters
 
 def _validate_parameter(value, name: str, expected_types, allow_none: bool = False, 
                        must_be_positive: bool = False):
@@ -22,20 +24,91 @@ def _validate_parameter(value, name: str, expected_types, allow_none: bool = Fal
     
     if must_be_positive and value is not None and value <= 0:
         raise ValueError(f"{name} must be positive, got {value}.")
+        
 
-
-def set_acquistion_geometry(
-        source_to_oringin_distance: float,
-        origin_to_detector_distance: float,
-        pixel_size: float,
-        num_pixels: tuple,
-        num_projections: int,
+def set_ct_acquisition_geometry(
+        params: dict,
         skip: int = 10,
-        origin: str ='bottom-right'
+        origin: str ='bottom-right',
         ) -> AcquisitionGeometry:
     
     """
-    Sets the Acquistion geometry for the 3D Cone-beam tomography.
+    Sets the Acquisition geometry for the 3D Cone-beam computerized tomography.
+
+    Parameters
+    ----------
+    params: dict
+        Computerized tomography parameter dictionary
+    skip : int, default 10
+        Skip parameter to downsample scanning data
+    origin : str, default "bottom-right"
+        parameter string to set up the origin of the acquisition geometry.
+        String must be one of 'top-left', 'top-right', 'bottom-left', 'bottom-right'
+    ctype : None or str, default None
+        Computerized type. "None" is normal tomography and "CL" is laminography
+
+    Returns
+    -------
+    acquisition_geometry : AcquistionGeometry
+        CIL's acquistion geometry data class
+
+    Raises
+    ------
+    TypeError
+        If parameters are not of correct type
+    ValueError
+        If parameters are invalid or required parameters are missing
+    """
+
+    # Parameter validation
+    _validate_parameter(params, "params", dict)
+    _validate_parameter(skip, "skip", int, must_be_positive=True)
+    _validate_parameter(origin, "origin", str)
+    
+    # Validate origin parameter
+    valid_origins = {'top-left', 'top-right', 'bottom-left', 'bottom-right'}
+    if origin not in valid_origins:
+        raise ValueError(f"origin must be one of {valid_origins}, got '{origin}'.")
+    
+    source_to_origin_distance, \
+    _, \
+    origin_to_detector_distance, \
+    pixel_size, \
+    num_pixels, \
+    num_projections = get_ct_parameters(params)
+
+    
+    angles = np.linspace(0, 360, num_projections//skip, endpoint=False) # Downsampled angles
+
+    acquisition_geometry = AcquisitionGeometry.create_Cone3D(
+        source_position=[0, -source_to_origin_distance, 0],
+        detector_position=[0, origin_to_detector_distance, 0],
+        units='mm',
+        detector_direction_x=[1, 0, 0],
+        rotation_axis_direction=[0,0,1],  
+    )
+
+    acquisition_geometry.set_panel(
+        num_pixels=num_pixels,
+        pixel_size=(pixel_size,pixel_size),
+        origin=origin
+        )
+
+    acquisition_geometry.set_angles(angles)
+    acquisition_geometry.set_labels(('angle', 'vertical', 'horizontal'))
+    print(acquisition_geometry)
+    return acquisition_geometry
+
+
+
+def set_cl_acquisition_geometry(
+        params: dict,
+        skip: int = 10,
+        origin: str ='bottom-right',
+        ) -> AcquisitionGeometry:
+    
+    """
+    Sets the Acquisition geometry for the 3D Cone-beam computerized laminography.
 
     Parameters
     ----------
@@ -69,37 +142,48 @@ def set_acquistion_geometry(
     """
 
     # Parameter validation
-    _validate_parameter(source_to_oringin_distance, "source_to_origin_distance", float, must_be_positive=True)
-    _validate_parameter(origin_to_detector_distance, "origin_to_detector_distance", float, must_be_positive=True)
-    _validate_parameter(pixel_size, "pixel_size", (int, float), must_be_positive=True)
-    _validate_parameter(num_pixels, "num_pixels", tuple)
-    _validate_parameter(num_projections, "num_projections", int, must_be_positive=True)
+    _validate_parameter(params, "params", dict)
     _validate_parameter(skip, "skip", int, must_be_positive=True)
     _validate_parameter(origin, "origin", str)
+
     
     # Validate origin parameter
     valid_origins = {'top-left', 'top-right', 'bottom-left', 'bottom-right'}
     if origin not in valid_origins:
         raise ValueError(f"origin must be one of {valid_origins}, got '{origin}'.")
 
+    # Set acquisition geometry for laminography
     
-    angles = np.linspace(0, 360, num_projections//skip, endpoint=False) # Downsampled angles
+    _, \
+    source_to_detector_distance, \
+    origin_to_detector_distance, \
+    pixel_size, \
+    num_pixels, \
+    _, \
+    _, \
+    _, \
+    angles_list, \
+    rotation_axis, \
+    height_offset = get_cl_parameters(params)
 
     acquisition_geometry = AcquisitionGeometry.create_Cone3D(
-        source_position=[0, -source_to_oringin_distance, 0],
-        detector_position=[0, origin_to_detector_distance, 0],
-        units='mm',
-        detector_direction_x=[1, 0, 0],
-        rotation_axis_direction=[0,0,1],  
-    )
-
-    acquisition_geometry.set_panel(
-        num_pixels=num_pixels,
-        pixel_size=(pixel_size,pixel_size),
-        origin=origin
+        source_position=[0.0, -source_to_detector_distance,0.0], 
+        detector_position=[0.0, origin_to_detector_distance, 0.0],
+        rotation_axis_position=height_offset,
+        rotation_axis_direction= rotation_axis)
+    
+    acquisition_geometry.set_angles(
+        angles=angles_list,
+        angle_unit='degree'
         )
 
-    acquisition_geometry.set_angles(angles)
-    acquisition_geometry.set_labels(('angle', 'vertical', 'horizontal'))
+    acquisition_geometry.set_panel(
+        num_pixels=num_pixels, 
+        pixel_size=pixel_size,
+        origin=origin
+        )
+     
+    acquisition_geometry.set_labels(['angle','vertical','horizontal'])
+
     print(acquisition_geometry)
     return acquisition_geometry
