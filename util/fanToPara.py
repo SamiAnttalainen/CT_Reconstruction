@@ -4,36 +4,15 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d # type: ignore
 from skimage.transform import iradon # type: ignore
 from cil.framework.acquisition_data import AcquisitionData # type: ignore
-
-
-
-def _validate_parameter(value, name: str, expected_types, allow_none: bool = False, 
-                       must_be_positive: bool = False):
-    """Helper function for parameter validation."""
-    if allow_none and value is None:
-        return
-    
-    if not isinstance(value, expected_types):
-        if isinstance(expected_types, tuple):
-            type_names = [t.__name__ for t in expected_types]
-        else:
-            type_names = [expected_types.__name__]
-        
-        if allow_none:
-            type_names.append("None")
-        
-        type_str = " or ".join(type_names)
-        raise TypeError(f"{name} must be {type_str}, got {type(value)}.")
-    
-    if must_be_positive and value is not None and value <= 0:
-        raise ValueError(f"{name} must be positive, got {value}.")
+from util.validateParameter import validate_parameter
 
 
 def convert_fan_to_parallel_geometry(
         data: np.ndarray,
         idx: int,
         source_origin_distance: float,
-        detector_pixel_size: float = 0.2
+        detector_pixel_size: float = 0.2,
+        direction: bool = False
         ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
     """
@@ -49,15 +28,17 @@ def convert_fan_to_parallel_geometry(
         Source-Origin-distance in millimeters
     detector_pixel_size : float, default 0.2
         Detector pixel size in millimeters
+    direction: bool, default False
+        Direction is vertical if false, else horizontal
 
     Returns
     -------
     Psinogram : np.ndarray
-        Converted parallel-beam sinogram.
+        Converted parallel-beam sinogram
     Ploc : np.ndarray
-        Parallel-beam sensor locations.
+        Parallel-beam sensor locations
     Pangles : np.ndarray
-        Parallel-beam projection angles.
+        Parallel-beam projection angles
 
     Raises
     ------
@@ -68,14 +49,18 @@ def convert_fan_to_parallel_geometry(
     """
 
     # Parameter validation
-    _validate_parameter(data, "data", AcquisitionData)
-    _validate_parameter(idx, "idx", (int, float), must_be_positive=True)
-    _validate_parameter(source_origin_distance, "source_origin_distance", (int, float), must_be_positive=True)
-    _validate_parameter(detector_pixel_size, "detector_pixel_size", (int, float), must_be_positive=True)
+    validate_parameter(data, "data", AcquisitionData)
+    validate_parameter(idx, "idx", (int, float), must_be_positive=True)
+    validate_parameter(source_origin_distance, "source_origin_distance", (int, float), must_be_positive=True)
+    validate_parameter(detector_pixel_size, "detector_pixel_size", (int, float), must_be_positive=True)
+    validate_parameter(direction, 'direction', bool)
 
 
     # A 2D Fan-beam sinogram from the 3D Cone-beam data.
-    fan_sinogram = data.get_slice(vertical=idx, force=True).as_array()
+    if direction:
+        fan_sinogram = data.get_slice(horizontal=idx, force=True).as_array()
+    else:   
+        fan_sinogram = data.get_slice(vertical=idx, force=True).as_array()
 
     # Rotation increment of the projection angles
     rotation_increment = float(data.geometry.angles[1] - data.geometry.angles[0])
@@ -163,19 +148,19 @@ def fan_to_parallel(
 
 
     # Parameter validation
-    _validate_parameter(F, "F", np.ndarray)
-    _validate_parameter(D, "D", (int, float), must_be_positive=True)
-    _validate_parameter(FanSensorGeometry, "FanSensorGeometry", str)
-    _validate_parameter(FanSensorSpacing, "FanSensorSpacing", (int, float), 
+    validate_parameter(F, "F", np.ndarray)
+    validate_parameter(D, "D", (int, float), must_be_positive=True)
+    validate_parameter(FanSensorGeometry, "FanSensorGeometry", str)
+    validate_parameter(FanSensorSpacing, "FanSensorSpacing", (int, float), 
                        must_be_positive=True)
-    _validate_parameter(FanRotationIncrement, "FanRotationIncrement", 
+    validate_parameter(FanRotationIncrement, "FanRotationIncrement", 
                        (int, float), must_be_positive=True)
-    _validate_parameter(FanCoverage, "FanCoverage", str)
-    _validate_parameter(Interpolation, "Interpolation", str)
-    _validate_parameter(ParallelSensorSpacing, "ParallelSensorSpacing", 
+    validate_parameter(FanCoverage, "FanCoverage", str)
+    validate_parameter(Interpolation, "Interpolation", str)
+    validate_parameter(ParallelSensorSpacing, "ParallelSensorSpacing", 
                        (int, float), allow_none=True, must_be_positive=True)
-    _validate_parameter(ParallelCoverage, "ParallelCoverage", str)
-    _validate_parameter(ParallelRotationIncrement, "ParallelRotationIncrement", 
+    validate_parameter(ParallelCoverage, "ParallelCoverage", str)
+    validate_parameter(ParallelRotationIncrement, "ParallelRotationIncrement", 
                        (int, float), allow_none=True, must_be_positive=True)
     
     # --- Fan-Beam Geometry Setup ---
@@ -287,7 +272,7 @@ def fan_to_parallel(
     plt.figure()
     plt.imshow(parallel_sinogram,
             aspect='auto',
-            cmap='hot')
+            cmap='gray')
     plt.title("Rebinned Parallel-beam Sinogram")
     plt.show()
 
@@ -339,15 +324,15 @@ def reconstruct_parallel_sinogram(
     """
 
     # Parameter validation
-    _validate_parameter(parallel_sinogram, "parallel_sinogram", np.ndarray)
-    _validate_parameter(parallel_angles, "parallel_angles", np.ndarray)
-    _validate_parameter(filter_name, "filter_name", str)
-    _validate_parameter(interpolation, "interpolation", str)
-    _validate_parameter(lower_bound, "lower_bound", (int, float))
-    _validate_parameter(upper_bound, "upper_bound", (int, float))
+    validate_parameter(parallel_sinogram, "parallel_sinogram", np.ndarray)
+    validate_parameter(parallel_angles, "parallel_angles", np.ndarray)
+    validate_parameter(filter_name, "filter_name", str)
+    validate_parameter(interpolation, "interpolation", str)
+    validate_parameter(lower_bound, "lower_bound", (int, float))
+    validate_parameter(upper_bound, "upper_bound", (int, float))
     if upper_bound < lower_bound:
         raise ValueError("Upper bound needs to greater than lower bound.")
-    _validate_parameter(cmap, "cmap", str)
+    validate_parameter(cmap, "cmap", str)
 
     # Reconstuction of the image
     recon = iradon(parallel_sinogram, theta=parallel_angles, filter_name=filter_name, interpolation=interpolation)

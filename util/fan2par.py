@@ -1,4 +1,4 @@
-import numpy as np
+import numpy as np # type: ignore
 from scipy.interpolate import griddata # type: ignore
 
 def rebin_fan_to_parallel(fan_sinogram_data, geometry):

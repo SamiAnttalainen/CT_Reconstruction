@@ -1,3 +1,5 @@
+from util.validateParameter import validate_parameter
+
 def read_pca_file(filepath : str, verbose: int = 0) -> dict:
     """
     Function for reading pca file metadata about 
@@ -28,12 +30,10 @@ def read_pca_file(filepath : str, verbose: int = 0) -> dict:
     """
 
     # Parameter validation
-    if not isinstance(filepath, str):
-        raise TypeError(f"Filepath must be a string, got {type(filepath)}.")
+    validate_parameter(filepath, 'filepath', str)
     if len(filepath) == 0:
         raise ValueError(f"Invalid file path, got {filepath}.")
-    if not isinstance(verbose, int):
-        raise TypeError(f"verbose must be a integer, got {type(verbose)}.")
+    validate_parameter(verbose, 'verbose', int)
     if verbose < 0:
         raise ValueError(f"verbose must be a non-negative integer, got {verbose}.")
 

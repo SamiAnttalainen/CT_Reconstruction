@@ -3,27 +3,7 @@ import numpy as np # type: ignore
 from cil.framework import AcquisitionGeometry # type: ignore
 from util.getParameters import get_ct_parameters
 from util.getParameters import get_cl_parameters
-
-def _validate_parameter(value, name: str, expected_types, allow_none: bool = False, 
-                       must_be_positive: bool = False):
-    """Helper function for parameter validation."""
-    if allow_none and value is None:
-        return
-    
-    if not isinstance(value, expected_types):
-        if isinstance(expected_types, tuple):
-            type_names = [t.__name__ for t in expected_types]
-        else:
-            type_names = [expected_types.__name__]
-        
-        if allow_none:
-            type_names.append("None")
-        
-        type_str = " or ".join(type_names)
-        raise TypeError(f"{name} must be {type_str}, got {type(value)}.")
-    
-    if must_be_positive and value is not None and value <= 0:
-        raise ValueError(f"{name} must be positive, got {value}.")
+from util.validateParameter import validate_parameter
         
 
 def set_ct_acquisition_geometry(
@@ -61,9 +41,9 @@ def set_ct_acquisition_geometry(
     """
 
     # Parameter validation
-    _validate_parameter(params, "params", dict)
-    _validate_parameter(skip, "skip", int, must_be_positive=True)
-    _validate_parameter(origin, "origin", str)
+    validate_parameter(params, "params", dict)
+    validate_parameter(skip, "skip", int, must_be_positive=True)
+    validate_parameter(origin, "origin", str)
     
     # Validate origin parameter
     valid_origins = {'top-left', 'top-right', 'bottom-left', 'bottom-right'}
@@ -75,7 +55,8 @@ def set_ct_acquisition_geometry(
     origin_to_detector_distance, \
     pixel_size, \
     num_pixels, \
-    num_projections = get_ct_parameters(params)
+    num_projections, \
+    _ = get_ct_parameters(params)
 
     
     angles = np.linspace(0, 360, num_projections//skip, endpoint=False) # Downsampled angles
@@ -142,9 +123,9 @@ def set_cl_acquisition_geometry(
     """
 
     # Parameter validation
-    _validate_parameter(params, "params", dict)
-    _validate_parameter(skip, "skip", int, must_be_positive=True)
-    _validate_parameter(origin, "origin", str)
+    validate_parameter(params, "params", dict)
+    validate_parameter(skip, "skip", int, must_be_positive=True)
+    validate_parameter(origin, "origin", str)
 
     
     # Validate origin parameter

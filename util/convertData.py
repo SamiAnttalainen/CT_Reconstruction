@@ -2,6 +2,7 @@
 from cil.processors import Binner, TransmissionAbsorptionConverter # type: ignore
 from cil.utilities.display import show2D # type: ignore
 from cil.framework.acquisition_data import AcquisitionData # type: ignore
+from util.validateParameter import validate_parameter
 
 def convert_ct_data(
         acquisition_data: AcquisitionData,
@@ -35,16 +36,9 @@ def convert_ct_data(
     """
 
     # Parameter validation
-    if not isinstance(acquisition_data, AcquisitionData):
-        raise TypeError(f"acquisition_data must be CIL's AcquisitionData class, got {type(acquisition_data)}.")
-    if not isinstance(white_level, int):
-        raise TypeError(f"white_level must be an integer, got {type(white_level)}.")
-    if white_level<=0:
-        raise ValueError(f"white_level must be a positive integer, {white_level}.")
-    if not isinstance(binning_parameter, int):
-        raise TypeError(f"binning_parameter must be an integer, got {type(binning_parameter)}.")
-    if binning_parameter <= 0:
-        raise ValueError(f"binning_parameter must be a positive integer, got {binning_parameter}.")
+    validate_parameter(acquisition_data, 'acquisition_data', AcquisitionData)
+    validate_parameter(white_level, 'white_level', int, must_be_positive=True)
+    validate_parameter(binning_parameter, 'binning_parameter', int, must_be_positive=True)
 
     # Region of interest
     roi={
@@ -106,16 +100,9 @@ def convert_cl_data(
     """
 
     # Parameter validation
-    if not isinstance(acquisition_data, AcquisitionData):
-        raise TypeError(f"acquisition_data must be CIL's AcquisitionData class, got {type(acquisition_data)}.")
-    if not isinstance(white_level, int):
-        raise TypeError(f"white_level must be an integer, got {type(white_level)}.")
-    if white_level<=0:
-        raise ValueError(f"white_level must be a positive integer, {white_level}.")
-    if not isinstance(binning_parameter, int):
-        raise TypeError(f"binning_parameter must be an integer, got {type(binning_parameter)}.")
-    if binning_parameter <= 0:
-        raise ValueError(f"binning_parameter must be a positive integer, got {binning_parameter}.")
+    validate_parameter(acquisition_data, 'acquisition_data', AcquisitionData)
+    validate_parameter(white_level, 'white_level', int, must_be_positive=True)
+    validate_parameter(binning_parameter, 'binning_parameter', int, must_be_positive=True)
 
     # Binned acquisition data
     binned_data = binner_processor.get_output()

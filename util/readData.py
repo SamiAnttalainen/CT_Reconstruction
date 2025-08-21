@@ -4,11 +4,11 @@ from cil.io import TIFFStackReader # type: ignore
 from cil.utilities.display import show2D # type: ignore
 from cil.framework import AcquisitionGeometry # type: ignore
 from cil.framework.acquisition_data import AcquisitionData # type: ignore
+from util.validateParameter import validate_parameter
 
 def read_ct_data(
         filename: str,
         acquisition_geometry: AcquisitionGeometry,
-        skip: int = 10
         ) -> AcquisitionData:
     
     """
@@ -21,8 +21,6 @@ def read_ct_data(
         Folder path name to the .tif files
     acquisition_geometry : AcquisitionGeometry
         CIL's acquisition geometry data class
-    skip : int, default 10
-        Downsampling parameter for the acquisition data
     
     Returns
     -------
@@ -38,19 +36,13 @@ def read_ct_data(
     """
 
     # Parameter validation
-    if not isinstance(filename, str):
-        raise TypeError(f"filename must be a string, got {type(filename)}.")
+    validate_parameter(filename, 'filename', str)
     if len(filename) == 0:
         raise ValueError(f"Invalid filename, got {filename}.")
-    if not isinstance(acquisition_geometry, AcquisitionGeometry):
-        raise TypeError(f"acquisition_geometry must be CIL's acquisitionGeometry data class, got {type(acquisition_geometry)}.")
-    if not isinstance(skip, int):
-        raise TypeError(f"skip must be an integer, got {type(skip)}.")
-    if skip <= 0:
-        raise ValueError(f"skip must be a positive integer, got {skip}.")
-    
+    validate_parameter(acquisition_geometry, 'acquisition_geometry', AcquisitionGeometry)
+
     # Region of interest
-    roi = {'axis_0': (0, acquisition_geometry.num_projections, skip), 'axis_1': -1, 'axis_2': (0, 1000,1)}
+    roi = {'axis_0': (0, acquisition_geometry.num_projections, 1), 'axis_1': -1, 'axis_2': (0, 1000,1)}
 
     # .tif file reader setup
     reader = TIFFStackReader(file_name=filename, transpose=False, roi=roi)
@@ -100,18 +92,13 @@ def read_cl_data(
     """
 
     # Parameter validation
-    if not isinstance(filename, str):
-        raise TypeError(f"filename must be a string, got {type(filename)}.")
+    validate_parameter(filename, 'filename', str)
     if len(filename) == 0:
         raise ValueError(f"Invalid filename, got {filename}.")
-    if not isinstance(acquisition_geometry, AcquisitionGeometry):
-        raise TypeError(f"acquisition_geometry must be CIL's acquisitionGeometry data class, got {type(acquisition_geometry)}.")
-    if not isinstance(skip, int):
-        raise TypeError(f"skip must be an integer, got {type(skip)}.")
-    if skip <= 0:
-        raise ValueError(f"skip must be a positive integer, got {skip}.")
-    if not isinstance(crop, int):
-        raise TypeError(f"crop must be an integer, got {type(crop)}.")
+    validate_parameter(acquisition_geometry, 'acquisition_geometry', AcquisitionGeometry)
+    validate_parameter(skip, 'skip', int, must_be_positive=True)
+    validate_parameter(crop, 'crop', int)
+
 
     # Normal region of interest
     roi = {
