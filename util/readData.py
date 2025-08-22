@@ -9,6 +9,8 @@ from util.validateParameter import validate_parameter
 def read_ct_data(
         filename: str,
         acquisition_geometry: AcquisitionGeometry,
+        num_projections: int,
+        skip: int = 10
         ) -> AcquisitionData:
     
     """
@@ -21,6 +23,8 @@ def read_ct_data(
         Folder path name to the .tif files
     acquisition_geometry : AcquisitionGeometry
         CIL's acquisition geometry data class
+    num_projections
+        Number of image projections
     
     Returns
     -------
@@ -40,9 +44,10 @@ def read_ct_data(
     if len(filename) == 0:
         raise ValueError(f"Invalid filename, got {filename}.")
     validate_parameter(acquisition_geometry, 'acquisition_geometry', AcquisitionGeometry)
+    validate_parameter(num_projections, 'num_projections', int, must_be_positive=True)
 
     # Region of interest
-    roi = {'axis_0': (0, acquisition_geometry.num_projections, 1), 'axis_1': -1, 'axis_2': (0, 1000,1)}
+    roi = {'axis_0': (0, num_projections, skip), 'axis_1': -1, 'axis_2': (0, 1000,1)}
 
     # .tif file reader setup
     reader = TIFFStackReader(file_name=filename, transpose=False, roi=roi)

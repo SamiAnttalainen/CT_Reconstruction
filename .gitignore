@@ -3,5 +3,8 @@ keyboard_1
 keyboard_4
 util/fan2par.py
 CT_pine_cone_hz_8W_200ms
+CT_pine_cone_8W_200ms
 CT_spruce_cone_hz_8W_200ms
+CT_9V-battery_8W_1000ms
+CT_eComponent_8W_1000ms
 fan2par
