@@ -104,9 +104,6 @@ def convert_cl_data(
     validate_parameter(white_level, 'white_level', int, must_be_positive=True)
     validate_parameter(binning_parameter, 'binning_parameter', int, must_be_positive=True)
 
-    # Binned acquisition data
-    binned_data = binner_processor.get_output()
-
     print(f'{white_level = }, about {100*white_level / 2**14:.3f} of the maximum (of 14 bit int)')
     transmission_processor = TransmissionAbsorptionConverter(white_level=white_level)
     attenuation_data = transmission_processor(acquisition_data)
@@ -117,9 +114,10 @@ def convert_cl_data(
         'vertical': (None, None, binning_parameter)
         }
 
+    # Data binning
     binner_processor = Binner(roi=roi)
-    binned_acq_data = binner_processor.set_input(attenuation_data).get_output()
-
+    binner_processor.set_input(attenuation_data)
+    binned_acq_data = binner_processor.get_output()
     show2D(binned_acq_data, origin='upper-left')
     print(binned_acq_data)
 
@@ -128,4 +126,4 @@ def convert_cl_data(
     del binner_processor
     del transmission_processor
 
-    return binned_data
+    return binned_acq_data
